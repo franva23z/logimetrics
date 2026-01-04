@@ -17,8 +17,5 @@ O **LogiMetrics Pro** é um dashboard interativo para gestão de frotas logísti
 - **Cálculo de Logística:** Seleção de dois pontos no mapa para estimativa de custo baseada no KM da máquina escolhida.
 - **Filtros Dinâmicos:** Segmentação da frota por estado de operação.
 
-## 📦 Como rodar o projeto
 
-1. **Clonar o repositório:**
-   ```bash
-   git clone [https://github.com/SEU_USUARIO/logimetrics.git](https://github.com/SEU_USUARIO/logimetrics.git)
+   git clone [https://[github.com/SEU_USUARIO/logimetrics.git](https://github.com/franva23z/logimetrics.git)](https://github.com/SEU_USUARIO/logimetrics.git)
