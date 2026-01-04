@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>LogiMetrics Pro | Central de Comando</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root { 
+            --bg: #05070a; --card: rgba(22, 27, 34, 0.9); --border: #30363d;
+            --neon-green: #00ff88; --neon-red: #ff3e3e; --neon-orange: #ff9100; --neon-blue: #00f2ff;
+        }
+        
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: #fff; margin: 0; padding: 20px; }
+
+        .header-section { text-align: center; margin-bottom: 30px; }
+        .header-section h1 { color: var(--neon-blue); text-shadow: 0 0 10px var(--neon-blue); margin-bottom: 20px; font-weight: 200; letter-spacing: 3px; }
+
+        .filter-bar { display: flex; justify-content: center; gap: 15px; margin-bottom: 40px; }
+        .filter-bar button { 
+            background: #161b22; border: 1px solid var(--border); color: #8b949e; 
+            padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s;
+        }
+        .filter-bar button:hover { border-color: var(--neon-blue); color: #fff; box-shadow: 0 0 10px rgba(0, 242, 255, 0.2); }
+
+        .fleet-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px; max-width: 1100px; margin: auto;
+        }
+
+        .machine-card {
+            background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+            padding: 20px; position: relative; cursor: pointer; transition: 0.3s;
+        }
+        .machine-card:hover { border-color: var(--neon-blue); transform: translateY(-5px); }
+
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .status-tag { position: absolute; top: 15px; right: 15px; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 4px; border: 1px solid;}
+        .neon-ativa { color: var(--neon-green); border-color: var(--neon-green); text-shadow: 0 0 5px var(--neon-green); }
+        .neon-manutencao { color: var(--neon-orange); border-color: var(--neon-orange); animation: blink 1.5s infinite; }
+        .neon-inativa { color: var(--neon-red); border-color: var(--neon-red); animation: blink 0.7s infinite; }
+
+        .details { max-height: 0; overflow: hidden; transition: 0.4s; margin-top: 0; color: #8b949e; font-size: 14px; }
+        .machine-card.active .details { max-height: 350px; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border); }
+
+        .floating-widget {
+            position: fixed; background: var(--card); border: 2px solid var(--border);
+            border-radius: 15px; display: none; flex-direction: column; z-index: 1000; box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+
+        #map-overlay { border-color: var(--neon-blue); width: 350px; height: 500px; bottom: 90px; right: 20px; }
+        #form-widget { border-color: var(--neon-green); width: 320px; bottom: 90px; right: 100px; padding: 20px; }
+
+        .fab {
+            position: fixed; width: 60px; height: 60px; border-radius: 50%; border: none;
+            cursor: pointer; z-index: 1001; font-size: 24px; box-shadow: 0 0 15px rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .fab-map { bottom: 20px; right: 20px; background: var(--neon-blue); }
+        .fab-add { bottom: 20px; right: 100px; background: var(--neon-green); }
+
+        input, select { 
+            width: 100%; padding: 10px; margin: 8px 0; background: #05070a; 
+            border: 1px solid var(--border); color: #fff; border-radius: 6px; box-sizing: border-box;
+        }
+        .btn-action { width: 100%; padding: 10px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 5px; }
+    
+        footer {
+            text-align: center;
+            padding: 20px;
+            margin-top: 40px;
+            border-top: 1px solid var(--border);
+            color: #8b949e;
+            font-size: 14px;
+        }
+        footer a {
+            color: var(--neon-blue);
+            text-decoration: none;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        footer a:hover {
+            text-shadow: 0 0 10px var(--neon-blue);
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-section">
+        <h1>LOGIMETRICS FROTAS</h1>
+        <div class="filter-bar">
+            <button onclick="loadFleet('http://localhost:8080/api/maquinas')">TODAS</button>
+            <button onclick="loadFleet('http://localhost:8080/api/maquinas/ativas')">OPERANDO</button>
+            <button onclick="loadFleet('http://localhost:8080/api/maquinas/manutencao')">MANUTENÇÃO</button>
+            <button onclick="loadFleet('http://localhost:8080/api/maquinas/inativas')">INATIVAS</button>
+        </div>
+    </div>
+
+    <div class="fleet-grid" id="fleetGrid"></div>
+
+    <button class="fab fab-map" onclick="toggleWidget('map-overlay')">🗺️</button>
+    <button class="fab fab-add" onclick="toggleWidget('form-widget')">➕</button>
+
+    <div id="form-widget" class="floating-widget">
+        <h3 style="color: var(--neon-green); margin-top: 0;">Adicionar da Frota</h3>
+        <select id="catalogoMaquinas" onchange="preencherCampos()">
+            <option value="">-- Escolha um Equipamento --</option>
+            <option value="Empilhadeira Toyota" data-manut="1500" data-km="4.50">Empilhadeira Toyota</option>
+            <option value="Guindaste RT" data-manut="4500" data-km="12.00">Guindaste RT</option>
+            <option value="Caminhão Scania" data-manut="3200" data-km="6.80">Caminhão Scania</option>
+            <option value="Trator Caterpillar" data-manut="5800" data-km="15.50">Trator Caterpillar</option>
+        </select>
+        <input type="number" id="addManutencao" placeholder="Custo Manutenção (R$)">
+        <input type="number" id="addKm" placeholder="Custo por KM (R$)">
+        <select id="addStatus">
+            <option value="ATIVA">ATIVA</option>
+            <option value="MANUTENCAO">MANUTENÇÃO</option>
+            <option value="INATIVA">INATIVA</option>
+        </select>
+        <button class="btn-action" style="background: var(--neon-green); color: #000;" onclick="salvarMaquina()">CONFIRMAR ADIÇÃO</button>
+    </div>
+
+    <div id="map-overlay" class="floating-widget">
+        <div id="leaflet-map" style="flex-grow: 1; border-radius: 12px 12px 0 0;"></div>
+        <div style="padding: 15px; background: #0d1117;">
+            <small style="color: var(--neon-blue)">Distância: <span id="distVal">0 km</span></small>
+            <select id="mapSelect"></select>
+            <button class="btn-action" style="background: var(--neon-blue); color: #000;" onclick="calculate()">CALCULAR ROTA</button>
+            <div id="costVal" style="margin-top: 10px; font-weight: bold; color: var(--neon-green);"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        
+        const map = L.map('leaflet-map').setView([-22.86, -42.20], 11);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+        let pts = [], markers = [], line, dist = 0;
+
+        map.on('click', (e) => {
+            if (pts.length >= 2) { 
+                pts = []; markers.forEach(m => map.removeLayer(m)); markers = []; 
+                if(line) map.removeLayer(line); 
+            }
+            pts.push(e.latlng);
+            markers.push(L.marker(e.latlng).addTo(map));
+            if (pts.length === 2) {
+                line = L.polyline(pts, {color: '#00f2ff'}).addTo(map);
+                dist = (map.distance(pts[0], pts[1]) / 1000).toFixed(2);
+                document.getElementById('distVal').innerText = dist + " km";
+            }
+        });
+
+        function preencherCampos() {
+            const select = document.getElementById('catalogoMaquinas');
+            const option = select.options[select.selectedIndex];
+            if(option.value !== "") {
+                document.getElementById('addManutencao').value = option.getAttribute('data-manut');
+                document.getElementById('addKm').value = option.getAttribute('data-km');
+            }
+        }
+
+        function toggleWidget(id) {
+            const el = document.getElementById(id);
+            const isVisible = el.style.display === 'flex';
+            document.querySelectorAll('.floating-widget').forEach(w => w.style.display = 'none');
+            el.style.display = isVisible ? 'none' : 'flex';
+            if(id === 'map-overlay' && !isVisible) setTimeout(() => map.invalidateSize(), 200);
+        }
+
+        async function loadFleet(url = 'http://localhost:8080/api/maquinas') {
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                const grid = document.getElementById('fleetGrid');
+                const selectMap = document.getElementById('mapSelect');
+                
+                grid.innerHTML = '';
+                if(url.endsWith('/api/maquinas')) selectMap.innerHTML = '';
+
+                data.forEach(m => {
+                    const statusClass = `neon-${m.status.toLowerCase()}`;
+                    let botoesCard = "";
+
+                    if (m.status.toUpperCase() === 'MANUTENCAO') {
+                        botoesCard = `<button class="btn-action" style="background: var(--neon-green); color: #000;" onclick="alterarStatus(event, ${m.id}, 'ATIVA')">CONCLUIR MANUTENÇÃO</button>`;
+                    } else if (m.status.toUpperCase() === 'INATIVA') {
+                        botoesCard = `<button class="btn-action" style="background: var(--neon-blue); color: #000;" onclick="alterarStatus(event, ${m.id}, 'ATIVA')">ATIVAR EQUIPAMENTO</button>`;
+                    } else {
+                        botoesCard = `
+                            <button class="btn-action" style="background: var(--neon-orange); color: #000;" onclick="alterarStatus(event, ${m.id}, 'MANUTENCAO')">MANUTENÇÃO</button>
+                            <button class="btn-action" style="background: var(--neon-red); color: #fff; margin-top: 5px;" onclick="alterarStatus(event, ${m.id}, 'INATIVA')">PARAR EQUIPAMENTO</button>
+                        `;
+                    }
+
+                    grid.innerHTML += `
+                        <div class="machine-card" onclick="this.classList.toggle('active')">
+                            <div class="status-tag ${statusClass}">${m.status.toUpperCase()}</div>
+                            <h3>${m.nome}</h3>
+                            <div class="details">
+                                <p> Manutenção: R$ ${m.custoManutencao.toFixed(2)}</p>
+                                <p> Custo KM: R$ ${m.custoPorKm.toFixed(2)}</p>
+                                ${botoesCard}
+                                <button class="btn-action" style="background: #333; color: #fff; margin-top: 10px;" onclick="deletarMaquina(event, ${m.id})">REMOVER</button>
+                            </div>
+                        </div>
+                    `;
+
+                    if(url.endsWith('/api/maquinas')) {
+                        const opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.text = m.nome;
+                        selectMap.add(opt);
+                    }
+                });
+            } catch (error) { console.error("Erro ao carregar frota:", error); }
+        }
+
+        async function salvarMaquina() {
+            const nome = document.getElementById('catalogoMaquinas').value;
+            if(!nome) return alert("Selecione um modelo!");
+
+            const nova = {
+                nome: nome,
+                custoManutencao: parseFloat(document.getElementById('addManutencao').value) || 0,
+                custoPorKm: parseFloat(document.getElementById('addKm').value) || 0,
+                status: document.getElementById('addStatus').value
+            };
+
+            const res = await fetch('http://localhost:8080/api/maquinas', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(nova)
+            });
+
+            if(res.ok) {
+                toggleWidget('form-widget');
+                loadFleet();
+            }
+        }
+
+        async function alterarStatus(event, id, novoStatus) {
+            event.stopPropagation();
+            await fetch(`http://localhost:8080/api/maquinas/${id}/status?novoStatus=${novoStatus}`, { method: 'PATCH' });
+            loadFleet();
+        }
+
+        async function deletarMaquina(event, id) {
+            event.stopPropagation();
+            if(!confirm("Remover do banco de dados?")) return;
+            await fetch(`http://localhost:8080/api/maquinas/${id}`, { method: 'DELETE' });
+            loadFleet();
+        }
+
+        async function calculate() {
+            const id = document.getElementById('mapSelect').value;
+            const res = await fetch('http://localhost:8080/api/maquinas/calcular-viagem', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ distanciaKm: parseFloat(dist), maquinaId: id })
+            });
+            document.getElementById('costVal').innerText = await res.text();
+        }
+
+        window.onload = () => loadFleet();
+    </script>
+</body>
+<footer>
+        <p>Desenvolvido com ⚡ por <a href="https://github.com/franva23z" target="_blank">franva23z</a> | LogiMetrics Pro &copy; 2026</p>
+    </footer>
+</html>
